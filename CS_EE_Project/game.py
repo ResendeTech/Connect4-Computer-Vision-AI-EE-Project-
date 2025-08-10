@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 
 rows = 6
@@ -44,6 +45,8 @@ def win_checks(board, piece):
         for r in range(3, rows):
             if board[r][c] == piece and board[r - 1][c + 1] == piece and board[r - 2][c + 2] == piece and board[r - 3][c + 3] == piece:
                 return True
+            
+            
 if __name__ == "__main__":
     board = create_board()
     print_board(board)
@@ -71,7 +74,8 @@ if __name__ == "__main__":
                 
         elif turn == 1 and not game_over:
             import ai
-            col = ai.pick_best_move(board, 2)
+            #col = ai.pick_best_move(board, 2)
+            col, minimax_score = ai.minimax(board, 6, -math.inf, math.inf, True)
             
             if is_valid_location(board, col):
                 row = for_next_open_row(board, col)
@@ -84,5 +88,6 @@ if __name__ == "__main__":
                 else:
                     turn += 1
                     turn = turn % 2
+                print("----AI'S TURN----")
                 print_board(board)
 
