@@ -128,9 +128,18 @@ if __name__ == "__main__":
             import ai
             #col = ai.pick_best_move(board, 2)
             try:
-                col, minimax_score = ai.minimax(board, 6, -math.inf, math.inf, True)
+                # col, minimax_score = ai.minimax(board, 6, -math.inf, math.inf, True)
+                # print("the try ai part is working")
+                result = ai.minimax(board, 6, -math.inf, math.inf, True)
+                print(f"Minimax returned: {result}")  # Debug: see what minimax actually returns
+                col, minimax_score = result
+                print(f"Column: {col}, Score: {minimax_score}")
+                print("the try ai part is working")
             except Exception as e:
                 print(f"AI error: {e}")
+                print(f"Error type: {type(e)}")
+                import traceback
+                traceback.print_exc()  # This will show the full error trace
                 col = None
             
             # If AI fails, try simpler approach or pick first valid move
@@ -139,7 +148,6 @@ if __name__ == "__main__":
                 valid_moves = ai.get_valid_locations(board)
                 if valid_moves:
                     col = ai.pick_best_move(board, 2)  # Use simpler heuristic
-                    print(f"Using simple heuristic: column {col + 1}")
                 else:
                     print("No valid moves available - game should be over")
                     game_over = True
