@@ -67,6 +67,11 @@ def minimax(board, depth, alpha, beta, maximaxingplayer):
     import game
     
     valid_locations = get_valid_locations(board)
+    
+    # Handle case where no valid moves exist
+    if not valid_locations:
+        return (None, 0)  # Return None for column and neutral score
+        
     # is_term_node = is_terminal_node(board)
     if depth == 0 or is_terminal_node(board):
         if is_terminal_node(board):
@@ -82,9 +87,11 @@ def minimax(board, depth, alpha, beta, maximaxingplayer):
         
     if maximaxingplayer: # takes highest value
         value = -math.inf
-        best_col = random.choice(valid_locations)
+        best_col = valid_locations[0] if valid_locations else 0  # Safe fallback
         for col in valid_locations:
             row = game.for_next_open_row(board, col)
+            if row is None:  # Column is full
+                continue
             board_copy = board.copy()
             game.drop_piece(board_copy, row, col, 2)
             new_score = minimax(board_copy, depth-1, alpha, beta, False)[1]
@@ -98,9 +105,11 @@ def minimax(board, depth, alpha, beta, maximaxingplayer):
     
     else: #Minimizing player - takes lowest value
         value = math.inf
-        best_col = random.choice(valid_locations)
+        best_col = valid_locations[0] if valid_locations else 0  # Safe fallback
         for col in valid_locations:
             row = game.for_next_open_row(board, col)
+            if row is None:  # Column is full
+                continue
             board_copy = board.copy()
             game.drop_piece(board_copy, row, col, 1)
             new_score = minimax(board_copy, depth-1, alpha, beta, True)[1]
