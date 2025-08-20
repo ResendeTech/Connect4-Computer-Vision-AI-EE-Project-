@@ -4,7 +4,44 @@ from PIL import Image, ImageOps
 
 # img_pil = Image.open("Connect4.png")
 # img_pil = ImageOps.exif_transpose(img_pil)
-
+def capture_from_camera():
+    """Capture image from laptop camera"""
+    # Initialize camera (0 is usually the default camera)
+    cap = cv2.VideoCapture(0)
+    
+    if not cap.isOpened():
+        print("Error: Could not open camera")
+        return None
+    
+    print("Camera opened. Press 'c' to capture, 'q' to quit")
+    
+    while True:
+        # Read frame from camera
+        ret, frame = cap.read()
+        
+        if not ret:
+            print("Error: Could not read frame")
+            break
+        
+        # Display the frame
+        cv2.imshow('Camera Feed - Press C to capture, Q to quit', frame)
+        
+        key = cv2.waitKey(1) & 0xFF
+        
+        if key == ord('c'):  # Capture image when 'c' is pressed
+            print("Image captured!")
+            cap.release()
+            cv2.destroyAllWindows()
+            return frame
+            
+        elif key == ord('q'):  # Quit when 'q' is pressed
+            cap.release()
+            cv2.destroyAllWindows()
+            return None
+    
+    cap.release()
+    cv2.destroyAllWindows()
+    return None
 
 def preprocess(img):
     y = 0.5
@@ -159,10 +196,12 @@ def decide_turn(board):
         return 1
     else:
         return "invalid board"
+    
+
 
 def get_board_from_image():
     """Get the board state from vision processing"""
-    img = cv2.imread("C:/Users/victor.andraderesend/OneDrive - Tampereen seudun toisen asteen koulutus/Documents/GitHub/Connect4-Computer-Vision-AI-EE-Project-/CS_EE_Project/Connect_4_board.webp")
+    img = capture_from_camera()
     
     if img is None:
         print("Error: Image not found or path is incorrect.")
