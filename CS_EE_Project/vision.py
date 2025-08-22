@@ -54,7 +54,7 @@ def preprocess(img):
     return blur, rgbimg
 
 def detect_circles(preprocessed_img, rgbimg):
-    circles = cv2.HoughCircles(preprocessed_img, cv2.HOUGH_GRADIENT, dp=1.2, minDist=50, param1=100, param2=15, minRadius=23, maxRadius=25)
+    circles = cv2.HoughCircles(preprocessed_img, cv2.HOUGH_GRADIENT, dp=1.2, minDist=50, param1=100, param2=15, minRadius=15, maxRadius=25)
 
     if circles is not None:
         for circle in circles[0, :]:
@@ -109,49 +109,104 @@ def sort_into_grid(circles, processed_img):
         rows.append(sorted_row)
 
     rows = sorted(rows, key=lambda row: row[0][1])
-    print(f"The rows gotten {rows}")
+
+    print(f"Detected {len(rows)} rows:")
+    for i, row in enumerate(rows):
+        print(f"  Row {i}: {len(row)} circles")
+
     return rows
 
 def classify_cell(rows, img, empty_thresh=130):
     grid = []
+    target_rows = 6
+    target_cols = 7
 
-    for row in rows:
+    # Ensure we have exactly 6 rows
+    while len(rows) < target_rows:
+        rows.append([])  # Add empty rows
+    
+    if len(rows) > target_rows:
+        rows = rows[:target_rows]
+
+    for row_idx, row in enumerate(rows):
         row_values = []
         for circle in row:
             x, y, r = circle
 
-            x1 = int(x - r)
-            x2 = int(x + r)
-            y1 = int(y - r)
-            y2 = int(y + r)
+            x1 = max(0, int(x - r))
+            x2 = min(img.shape[1], int(x + r))
+            y1 = max(0, int(y - r))
+            y2 = min(img.shape[0], int(y + r))
+
+            if x2 <= x1 or y2 <= y1:
+                row_values.append(0)  # Default to empty
+                continue
 
             cell_img = img[y1:y2, x1:x2]
 
-            if np.mean(cell_img) > empty_thresh:
+            if cell_img.size == 0:
                 row_values.append(0)
-            else:
-                gray_cell = cv2.cvtColor(cell_img, cv2.COLOR_BGR2GRAY)
-                if np.mean(gray_cell) > empty_thresh:  # Light areas = empty
-                    row_values.append(0)
-                else:
-                    # Color analysis in BGR (OpenCV format)
-                    avg_colour = np.mean(cell_img.reshape(-1, 3), axis=0)
-                    b, g, r_value = avg_colour
+                continue
 
-                    print(f"Circle at ({x},{y}): BGR=({b:.1f},{g:.1f},{r_value:.1f})")
+            hsv_cell = cv2.cvtColor(cell_img, cv2.COLOR_BGR2HSV)
+            avg_hsv = np.mean(hsv_cell.reshape(-1, 3), axis=0)
+            h, s, v = avg_hsv
+            
+            print(f"Circle at ({x},{y}): HSV=({h:.1f},{s:.1f},{v:.1f})")
+            
+
+            # Check if it's bright/empty first
+            if s < 100 or v > 248:  # High brightness or low saturation = empty
+                row_values.append(0)
+                print(f"  -> EMPTY (bright/unsaturated)")
+            # Orange detection (hue around 10-25 degrees)
+            elif (h <= 20 or h >= 350) and s > 140 and v > 248:
+                row_values.append(1)  # Orange
+                print(f"  -> ORANGE detected")
+            # Yellow detection (hue around 25-35 degrees)
+            elif 45 < h <= 70 and s > 140 and v > 248:
+                row_values.append(2)  # Yellow
+                print(f"  -> YELLOW detected")
+            else:
+                row_values.append(0)  # Empty/unclear
+                print(f"  -> EMPTY (default)")
+
+
+            # if np.mean(cell_img) > empty_thresh:
+            #     row_values.append(0)
+            # else:
+            #     gray_cell = cv2.cvtColor(cell_img, cv2.COLOR_BGR2GRAY)
+            #     if np.mean(gray_cell) > empty_thresh:  # Light areas = empty
+            #         row_values.append(0)
+            #     else:
+            #         # Color analysis in BGR (OpenCV format)
+            #         avg_colour = np.mean(cell_img.reshape(-1, 3), axis=0)
+            #         b, g, r_value = avg_colour
+
+            #         print(f"Circle at ({x},{y}): BGR=({b:.1f},{g:.1f},{r_value:.1f})")
                     
-                    # Red detection: High Red, Low Green
-                    if r_value > 130 and g < 20 and r_value > b + 10:
-                        row_values.append(1)  # Red
-                        #print(f"  -> RED detected")
-                    # Yellow detection: High Red and Green, moderate Blue
-                    elif r_value > 130 and g > 80 and g < r_value + 20:
-                        row_values.append(2)  # Yellow
-                        #print(f"  -> YELLOW detected")
-                    else:
-                        row_values.append(0)  # Empty/unclear
-                        #print(f"  -> EMPTY (default)")
-                        
+            #         # Red detection: High Red, Low Green
+            #         if r_value > 120 and g > 60 and g < 150 and b < 80 and r_value > g:
+            #             row_values.append(1)  # Red
+            #             #print(f"  -> RED detected")
+            #         # Yellow detection: High Red and Green, moderate Blue
+            #         elif r_value > 130 and g > 80 and b < 100 and abs(r_value - g) < 40:
+            #             row_values.append(2)  # Yellow
+            #             #print(f"  -> YELLOW detected")
+            #         else:
+            #             row_values.append(0)  # Empty/unclear
+            #             #print(f"  -> EMPTY (default)")
+
+                
+        while len(row_values) < target_cols:
+            row_values.append(0)  # Pad with empty cells
+        
+        if len(row_values) > target_cols:
+            row_values = row_values[:target_cols]  # Trim extra columns
+            
+        print(f"Row {row_idx}: {row_values} ({len(row_values)} cells)")
+        grid.append(row_values)
+                    
         grid.append(row_values)
     print(grid)
     return grid
@@ -222,10 +277,7 @@ def get_board_from_image():
         return None
     
 if __name__ == "__main__":
-    img = cv2.imread("C:/Users/victor.andraderesend/OneDrive - Tampereen seudun toisen asteen koulutus/Documents/GitHub/Connect4-Computer-Vision-AI-EE-Project-/CS_EE_Project/C4B.png")
-    if img is not None:
-        preprocess(img)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-    else:
-        print("Could not load image")
+    img = capture_from_camera()
+    preprocess(img)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
