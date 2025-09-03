@@ -13,6 +13,10 @@ def capture_from_camera():
         print("Error: Could not open camera")
         return None
     
+    # Set higher resolution for larger image display
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)   # Set width to 1280
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)  # Set height to 720
+    
     print("Camera opened. Press 'c' to capture, 'q' to quit")
     
     while True:
@@ -23,18 +27,19 @@ def capture_from_camera():
             print("Error: Could not read frame")
             break
         
-        # Display the frame
+        # Display the frame at full size
         cv2.imshow('Camera Feed - Press C to capture, Q to quit', frame)
         
         key = cv2.waitKey(1) & 0xFF
         
         if key == ord('c'):  # Capture image when 'c' is pressed
-            print("Image captured!")
+            print("✅ Image captured!")
             cap.release()
             cv2.destroyAllWindows()
             return frame
             
         elif key == ord('q'):  # Quit when 'q' is pressed
+            print("🔄 Camera session ended")
             cap.release()
             cv2.destroyAllWindows()
             return None
@@ -44,8 +49,8 @@ def capture_from_camera():
     return None
 
 def preprocess(img):
-    y = 0.5
-    x = 0.5
+    y = 1.5
+    x = 1.5
     resizeimg = cv2.resize(img, None, fx=x, fy=y, interpolation=cv2.INTER_LINEAR)
     grayimg = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     rgbimg = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -54,6 +59,7 @@ def preprocess(img):
     return blur, rgbimg
 
 def detect_circles(preprocessed_img, rgbimg):
+    # Revert to more restrictive parameters to get ~42 circles, not 66
     circles = cv2.HoughCircles(preprocessed_img, cv2.HOUGH_GRADIENT, dp=1.2, minDist=50, param1=100, param2=15, minRadius=15, maxRadius=25)
 
     if circles is not None:
@@ -155,21 +161,63 @@ def classify_cell(rows, img, empty_thresh=130):
             print(f"Circle at ({x},{y}): HSV=({h:.1f},{s:.1f},{v:.1f})")
             
 
-            # Check if it's bright/empty first
-            if s < 100 or v > 248:  # High brightness or low saturation = empty
-                row_values.append(0)
-                print(f"  -> EMPTY (bright/unsaturated)")
-            # Orange detection (hue around 10-25 degrees)
-            elif (h <= 20 or h >= 350) and s > 140 and v > 248:
-                row_values.append(1)  # Orange
-                print(f"  -> ORANGE detected")
-            # Yellow detection (hue around 25-35 degrees)
-            elif 45 < h <= 70 and s > 140 and v > 248:
-                row_values.append(2)  # Yellow
-                print(f"  -> YELLOW detected")
-            else:
-                row_values.append(0)  # Empty/unclear
-                print(f"  -> EMPTY (default)")
+            # Alternative approach: Use intensity and color variance instead of HSV
+            # Extract the cell region for more detailed analysis
+            cell_bgr = cv2.cvtColor(cell_img, cv2.COLOR_HSV2BGR)
+            
+            # Calculate color statistics
+            mean_bgr = np.mean(cell_bgr.reshape(-1, 3), axis=0)
+            std_bgr = np.std(cell_bgr.reshape(-1, 3), axis=0)
+            b, g, r = mean_bgr
+            
+            # Calculate color intensity and ratios
+            intensity = np.mean(mean_bgr)
+            color_variance = np.sum(std_bgr)
+            
+            # Check for circular object detection using edge density
+            gray_cell = cv2.cvtColor(cell_bgr, cv2.COLOR_BGR2GRAY)
+            edges = cv2.Canny(gray_cell, 50, 150)
+            edge_density = np.sum(edges > 0) / edges.size
+            
+            print(f"Circle at ({x},{y}): BGR=({b:.1f},{g:.1f},{r:.1f}) intensity={intensity:.1f} variance={color_variance:.1f} edges={edge_density:.3f}")
+            
+            # Classification based on actual data analysis
+            # From your output, I can see distinct patterns:
+            # Empty holes: BGR around (155-170, 160-183, 209-233) with high intensity ~183-191
+            # Potential pieces: BGR like (172.1,213.9,191.1) or (171.5,206.8,196.6) - notice the high green!
+            
+            # Check for pieces based on observed patterns
+            piece_detected = False
+            
+            # Orange pieces detection: Look for high green channel (orange reflects green strongly)
+            if g > 205 and edge_density > 0.10 and intensity > 190:
+                row_values.append(2)  # Orange 
+                print(f"  -> ORANGE (high green {g:.1f})")
+                piece_detected = True
+                
+            # Yellow pieces detection: Look for high overall intensity with balanced colors
+            elif intensity > 200 and color_variance < 210 and edge_density > 0.10:
+                # Check if it's more yellow-like (high red+green)
+                if r > 190 and g > 190:
+                    row_values.append(1)  # Yellow
+                    print(f"  -> YELLOW (bright balanced)")
+                    piece_detected = True
+                    
+            # Alternative detection: Look for unusual color distributions
+            elif color_variance < 200 and edge_density > 0.10:
+                # This might be a piece with different surface properties
+                if g > r * 1.1 and g > b * 1.1:  # Green dominant
+                    row_values.append(2)  # Orange
+                    print(f"  -> ORANGE (green dominant)")
+                    piece_detected = True
+                elif r > 200 and g > 190:  # High red+green
+                    row_values.append(1)  # Yellow  
+                    print(f"  -> YELLOW (high R+G)")
+                    piece_detected = True
+                    
+            if not piece_detected:
+                row_values.append(0)  # Empty
+                print(f"  -> EMPTY (no piece detected)")
 
 
             # if np.mean(cell_img) > empty_thresh:
@@ -206,9 +254,10 @@ def classify_cell(rows, img, empty_thresh=130):
             
         print(f"Row {row_idx}: {row_values} ({len(row_values)} cells)")
         grid.append(row_values)
-                    
-        grid.append(row_values)
-    print(grid)
+    
+    print(f"Final grid ({len(grid)} rows):")
+    for i, row in enumerate(grid):
+        print(f"  Row {i}: {row}")
     return grid
 
 def convert_to_board(grid):
@@ -274,6 +323,33 @@ def get_board_from_image():
         board = convert_to_board(grid)
         return board
     else:
+        return None
+
+
+def get_board_from_image_data(img):
+    """Get board state from image data (numpy array) instead of camera capture"""
+    if img is None:
+        print("Error: No image data provided.")
+        return None
+
+    try:
+        grayimg = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        rgbimg = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        
+        circles, coordinate_point = detect_circles(grayimg, rgbimg)
+
+        if circles is not None:
+            print(f"Total circles detected: {len(circles)}")
+            rows = sort_into_grid(circles, rgbimg)
+            grid = classify_cell(rows, rgbimg)
+            board = convert_to_board(grid)
+            return board
+        else:
+            print("No circles detected in perturbed image")
+            return None
+            
+    except Exception as e:
+        print(f"Error processing image data: {e}")
         return None
     
 if __name__ == "__main__":
